@@ -1,0 +1,120 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Helpers ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt']) &&
+             data.uid == request.auth.uid &&
+             data.email is string &&
+             data.createdAt == request.time &&
+             data.updatedAt == request.time;
+    }
+
+    function isValidChat(data) {
+      return data.keys().hasAll(['userId', 'role', 'content', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.role in ['user', 'model'] &&
+             data.content is string && data.content.size() <= 10000 &&
+             data.createdAt == request.time;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['userId', 'title', 'status', 'createdAt', 'updatedAt']) &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() <= 500 &&
+             data.status in ['pending', 'completed'] &&
+             data.createdAt == request.time &&
+             data.updatedAt == request.time;
+    }
+
+    function isValidMemory(data) {
+      return data.keys().hasAll(['userId', 'content', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.content is string && data.content.size() <= 2000 &&
+             data.createdAt == request.time;
+    }
+
+    function isValidJournal(data) {
+      return data.keys().hasAll(['userId', 'mood', 'date', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.mood is string &&
+             data.date is string &&
+             data.createdAt == request.time;
+    }
+
+    // --- Match Rules ---
+
+    // USERS
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && 
+                      incoming().diff(existing()).affectedKeys().hasOnly(['preferences', 'updatedAt', 'displayName', 'photoURL']) &&
+                      incoming().updatedAt == request.time;
+    }
+
+    // CHATS
+    match /users/{userId}/chats/{chatId} {
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidChat(incoming());
+      // Chats are usually immutable in this app
+    }
+
+    // TASKS
+    match /users/{userId}/tasks/{taskId} {
+      allow list: if isOwner(userId);
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidTask(incoming());
+      allow update: if isOwner(userId) &&
+                      incoming().userId == existing().userId &&
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().diff(existing()).affectedKeys().hasAny(['title', 'description', 'status', 'priority', 'dueDate', 'updatedAt']) &&
+                      incoming().updatedAt == request.time;
+      allow delete: if isOwner(userId);
+    }
+
+    // MEMORIES
+    match /users/{userId}/memories/{memoryId} {
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidMemory(incoming());
+      allow delete: if isOwner(userId);
+    }
+
+    // JOURNAL
+    match /users/{userId}/journal/{entryId} {
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidJournal(incoming());
+      allow update: if isOwner(userId) &&
+                      incoming().userId == existing().userId &&
+                      incoming().diff(existing()).affectedKeys().hasAny(['mood', 'note']) &&
+                      incoming().updatedAt == request.time;
+      allow delete: if isOwner(userId);
+    }
+  }
+}

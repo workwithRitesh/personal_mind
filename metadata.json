@@ -1,0 +1,17 @@
+{
+  "name": "PersonalMind",
+  "description": "Your AI Life Assistant - A multi-capability intelligent agent for tasks, search, weather, news, finance, and schedules.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "Conversational AI",
+    "Web Search",
+    "Task Management",
+    "Calendar Integration",
+    "Financial Tracking",
+    "Voice Interaction"
+  ]
+}
